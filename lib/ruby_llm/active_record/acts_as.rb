@@ -126,10 +126,9 @@ module RubyLLM
         self
       end
 
-      def ask(message, &)
-        message = { role: :user, content: message }
-        messages.create!(**message)
-        to_llm.complete(&)
+      def ask(message, with: {}, &block)
+        messages.create!(role: :user, content: message)
+        to_llm.ask(message, with: with, &block)
       end
 
       alias say ask
