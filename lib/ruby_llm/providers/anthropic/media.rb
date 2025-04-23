@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "pry-byebug"
+require "pry"
+
 module RubyLLM
   module Providers
     module Anthropic
@@ -25,9 +28,26 @@ module RubyLLM
         end
 
         def format_image(part)
-          # Handle image formatting for Anthropic
-          # This is just a placeholder - implement based on Anthropic's requirements
-          part
+          source = part[:source]
+
+          if source[:type] == "url"
+            {
+              type: "image",
+              source: {
+                type: "url",
+                url: source[:url]
+              }
+            }
+          elsif source[:type] == "base64"
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: source[:media_type], # e.g., "image/jpeg" or "image/png"
+                data: source[:data] # base64-encoded image data
+              }
+            }
+          end
         end
 
         def format_pdf(part) # rubocop:disable Metrics/MethodLength
