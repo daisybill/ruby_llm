@@ -25,32 +25,34 @@ module RubyLLM
                    to: :to_llm
         end
 
-        def acts_as_message(chat_class: 'Chat', tool_call_class: 'ToolCall', touch_chat: false) # rubocop:disable Metrics/MethodLength
+        def acts_as_message(chat_class: 'Chat', tool_call_class: 'ToolCall', touch_chat: false, chat_foreign_key: nil, tool_call_foreign_key: nil) # rubocop:disable Metrics/MethodLength
           include MessageMethods
 
           @chat_class = chat_class.to_s
           @tool_call_class = tool_call_class.to_s
 
-          belongs_to :chat, class_name: @chat_class, touch: touch_chat
+          belongs_to :chat, class_name: @chat_class, foreign_key: chat_foreign_key || "#{@chat_class.underscore}_id", touch: touch_chat
           has_many :tool_calls, class_name: @tool_call_class, dependent: :destroy
 
           belongs_to :parent_tool_call,
                      class_name: @tool_call_class,
-                     foreign_key: 'tool_call_id',
+                     foreign_key: tool_call_foreign_key || 'tool_call_id',
                      optional: true,
                      inverse_of: :result
+
+          class_attribute :llm_tool_call_foreign_key, default: (tool_call_foreign_key || 'tool_call_id')
 
           delegate :tool_call?, :tool_result?, :tool_results, to: :to_llm
         end
 
-        def acts_as_tool_call(message_class: 'Message')
+        def acts_as_tool_call(message_class: 'Message', message_foreign_key: nil, tool_call_foreign_key: nil)
           @message_class = message_class.to_s
 
-          belongs_to :message, class_name: @message_class
+          belongs_to :message, class_name: @message_class, foreign_key: message_foreign_key || "#{@message_class.underscore}_id"
 
           has_one :result,
                   class_name: @message_class,
-                  foreign_key: 'tool_call_id',
+                  foreign_key: tool_call_foreign_key || 'tool_call_id',
                   inverse_of: :parent_tool_call,
                   dependent: :nullify
         end
@@ -145,18 +147,22 @@ module RubyLLM
         return unless message
 
         if message.tool_call_id
-          tool_call_id = self.class.tool_call_class.constantize.find_by(tool_call_id: message.tool_call_id).id
+          tool_call_record = self.class.tool_call_class.constantize.find_by(tool_call_id: message.tool_call_id)
+          tool_call_pk = tool_call_record&.id
         end
 
         transaction do
-          @message.update!(
+          update_attrs = {
             role: message.role,
             content: message.content,
             model_id: message.model_id,
-            tool_call_id: tool_call_id,
             input_tokens: message.input_tokens,
             output_tokens: message.output_tokens
-          )
+          }
+          if tool_call_pk
+            update_attrs[self.class.llm_tool_call_foreign_key.to_sym] = tool_call_pk
+          end
+          @message.update!(update_attrs)
           persist_tool_calls(message.tool_calls) if message.tool_calls.present?
         end
       end
@@ -164,7 +170,7 @@ module RubyLLM
       def persist_tool_calls(tool_calls)
         tool_calls.each_value do |tool_call|
           attributes = tool_call.to_h
-          attributes[:tool_call_id] = attributes.delete(:id)
+          attributes[self.class.llm_tool_call_foreign_key.to_sym] = attributes.delete(:id)
           @message.tool_calls.create!(**attributes)
         end
       end
