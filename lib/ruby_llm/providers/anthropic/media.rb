@@ -28,26 +28,13 @@ module RubyLLM
         end
 
         def format_image(part)
-          source = part[:source]
-
-          if source[:type] == "url"
-            {
-              type: "image",
-              source: {
-                type: "url",
-                url: source[:url]
-              }
+          {
+            type: "image",
+            source: {
+              type: "url",
+              url: part[:source][:url]
             }
-          elsif source[:type] == "base64"
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: source[:media_type], # e.g., "image/jpeg" or "image/png"
-                data: source[:data] # base64-encoded image data
-              }
-            }
-          end
+          }
         end
 
         def format_pdf(part) # rubocop:disable Metrics/MethodLength
